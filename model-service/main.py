@@ -1,59 +1,74 @@
-from pathlib import Path
-import pickle
+import joblib
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
-from flask import Flask, jsonify, request
-from flask_cors import CORS
+MODEL_PATH = "model.pkl"
+CLASS_NAMES = ["setosa", "versicolor", "virginica"]
 
-
-BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "model.pkl"
-
-app = Flask(__name__)
-CORS(app)
+model = None
 
 
-def load_model():
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(
-            "model.pkl is missing. Run `python train.py` before starting the service."
-        )
-    with MODEL_PATH.open("rb") as model_file:
-        bundle = pickle.load(model_file)
-    return bundle["model"], bundle["target_names"]
+class PredictRequest(BaseModel):
+    sepal_length: float = Field(..., ge=0, le=10)
+    sepal_width:  float = Field(..., ge=0, le=10)
+    petal_length: float = Field(..., ge=0, le=10)
+    petal_width:  float = Field(..., ge=0, le=10)
 
 
-model, target_names = load_model()
+class PredictResponse(BaseModel):
+    prediction: str
+    class_id: int
+    confidence: float
+    probabilities: dict
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global model
+    print(f"Loading model from {MODEL_PATH}...")
+    model = joblib.load(MODEL_PATH)
+    print("Model loaded.")
+    yield
+    model = None
+
+
+app = FastAPI(title="Iris Classifier API", lifespan=lifespan)
+
+# Allow the browser page to call the API from a different origin
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.post("/predict", response_model=PredictResponse)
+async def predict(req: PredictRequest):
+    if model is None:
+        raise HTTPException(503, "Model not loaded")
+
+    features = [[
+        req.sepal_length,
+        req.sepal_width,
+        req.petal_length,
+        req.petal_width,
+    ]]
+
+    probs = model.predict_proba(features)[0]
+    class_id = int(probs.argmax())
+    label = CLASS_NAMES[class_id]
+
+    return PredictResponse(
+        prediction=label,
+        class_id=class_id,
+        confidence=float(probs[class_id]),
+        probabilities={name: float(p) for name, p in zip(CLASS_NAMES, probs)},
+    )
 
 
 @app.get("/health")
-def health():
-    return jsonify({"status": "ok", "model": "iris-classifier"})
-
-
-@app.post("/predict")
-def predict():
-    payload = request.get_json(silent=True) or {}
-    feature_names = [
-        "sepal_length",
-        "sepal_width",
-        "petal_length",
-        "petal_width",
-    ]
-
-    try:
-        features = [[float(payload[name]) for name in feature_names]]
-    except (KeyError, TypeError, ValueError):
-        return jsonify({"error": "Provide four numeric iris measurements."}), 400
-
-    prediction = model.predict(features)[0]
-    probabilities = model.predict_proba(features)[0]
-    confidence = float(max(probabilities))
-
-    return jsonify({
-        "prediction": target_names[prediction],
-        "confidence": round(confidence, 4),
-    })
-
-
-if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8000, debug=True)
+async def health():
+    return {"status": "ok", "model_loaded": model is not None}

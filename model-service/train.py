@@ -1,29 +1,30 @@
-from pathlib import Path
-import pickle
-
 from sklearn.datasets import load_iris
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+import joblib
 
+# Load dataset
+X, y = load_iris(return_X_y=True)
 
-BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "model.pkl"
+# Split
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
 
+# Train
+clf = RandomForestClassifier(
+    n_estimators=100,
+    max_depth=5,
+    random_state=42
+)
+clf.fit(X_train, y_train)
 
-def main():
-    iris = load_iris()
-    model = RandomForestClassifier(n_estimators=120, random_state=42)
-    model.fit(iris.data, iris.target)
+# Evaluate
+preds = clf.predict(X_test)
+acc = accuracy_score(y_test, preds)
+print(f"Test accuracy: {acc:.4f}")
 
-    model_bundle = {
-        "model": model,
-        "target_names": iris.target_names.tolist(),
-    }
-
-    with MODEL_PATH.open("wb") as model_file:
-        pickle.dump(model_bundle, model_file)
-
-    print(f"Saved model to {MODEL_PATH}")
-
-
-if __name__ == "__main__":
-    main()
+# Save
+joblib.dump(clf, "model.pkl")
+print("Saved model.pkl")

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iris Classifier</title>
+  <style>
+    :root {
+      --ink: #19332f;
+      --muted: #66827a;
+      --paper: #f5f7ee;
+      --panel: #fffdf7;
+      --leaf: #2f765c;
+      --leaf-light: #d9e9d2;
+      --coral: #db7255;
+      --line: #dce6d8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: radial-gradient(circle at 10% 0%, #e7f0dc 0, transparent 32%), var(--paper);
+      font-family: Georgia, "Times New Roman", serif;
+    }
+    main { max-width: 960px; margin: 0 auto; padding: 64px 24px; }
+    header { max-width: 650px; margin-bottom: 42px; }
+    .eyebrow { color: var(--coral); font: 700 12px/1.2 Arial, sans-serif; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 12px 0 16px; font-size: clamp(3rem, 8vw, 6.4rem); line-height: .9; font-weight: 400; letter-spacing: -.04em; }
+    header p { max-width: 530px; margin: 0; color: var(--muted); font: 17px/1.6 Arial, sans-serif; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 24px; align-items: stretch; }
+    .panel { padding: 30px; border: 1px solid var(--line); background: rgba(255, 253, 247, .86); box-shadow: 0 18px 40px rgba(45, 76, 58, .08); }
+    .panel h2 { margin: 0 0 26px; font-size: 25px; font-weight: 400; }
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 18px; }
+    label { display: grid; gap: 8px; color: var(--muted); font: 12px/1.2 Arial, sans-serif; text-transform: uppercase; letter-spacing: .06em; }
+    input { width: 100%; padding: 13px 12px; border: 1px solid var(--line); border-radius: 0; color: var(--ink); background: white; font: 18px Georgia, serif; }
+    input:focus { outline: 2px solid var(--leaf-light); border-color: var(--leaf); }
+    button { width: 100%; margin-top: 30px; padding: 15px 18px; border: 0; color: white; background: var(--leaf); cursor: pointer; font: 700 13px Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+    button:hover { background: #235b47; }
+    .result { display: flex; min-height: 100%; flex-direction: column; justify-content: space-between; background: var(--ink); color: #f5f7ee; }
+    .result h2 { color: #b9d9bd; }
+    .result-value { margin: 48px 0 14px; color: white; font-size: clamp(2.2rem, 5vw, 4rem); line-height: .95; }
+    .result-copy { color: #b8c9bd; font: 14px/1.6 Arial, sans-serif; }
+    .confidence { margin-top: 34px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.18); color: #d9e9d2; font: 700 12px Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+    .error { color: #ffb09a; }
+    @media (max-width: 700px) { main { padding: 38px 18px; } .workspace { grid-template-columns: 1fr; } .fields { gap: 16px 12px; } .panel { padding: 23px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">A tiny machine learning lab</div>
+      <h1>Iris classifier</h1>
+      <p>Enter the measurements of an iris flower and let a Random Forest model identify its species.</p>
+    </header>
+
+    <section class="workspace" aria-label="Iris prediction tool">
+      <form class="panel" id="prediction-form">
+        <h2>Flower measurements</h2>
+        <div class="fields">
+          <label>Sepal length (cm)<input name="sepal_length" type="number" value="5.1" min="0" step="0.1" required></label>
+          <label>Sepal width (cm)<input name="sepal_width" type="number" value="3.5" min="0" step="0.1" required></label>
+          <label>Petal length (cm)<input name="petal_length" type="number" value="1.4" min="0" step="0.1" required></label>
+          <label>Petal width (cm)<input name="petal_width" type="number" value="0.2" min="0" step="0.1" required></label>
+        </div>
+        <button type="submit">Classify flower</button>
+      </form>
+
+      <aside class="panel result" aria-live="polite">
+        <div>
+          <h2>Prediction</h2>
+          <div class="result-value" id="prediction">Waiting...</div>
+          <div class="result-copy" id="result-copy">Your result will appear here.</div>
+        </div>
+        <div class="confidence" id="confidence">Confidence --</div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const form = document.querySelector('#prediction-form');
+    const prediction = document.querySelector('#prediction');
+    const resultCopy = document.querySelector('#result-copy');
+    const confidence = document.querySelector('#confidence');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const data = Object.fromEntries(new FormData(form));
+      prediction.textContent = 'Thinking...';
+      resultCopy.textContent = 'Sending measurements to the model service.';
+      confidence.textContent = 'Confidence --';
+
+      try {
+        const response = await fetch('http://127.0.0.1:8000/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'The model service returned an error.');
+        prediction.textContent = payload.prediction;
+        resultCopy.textContent = 'The model matched this measurement profile to an iris species.';
+        confidence.textContent = `Confidence ${Math.round(payload.confidence * 100)}%`;
+      } catch (error) {
+        prediction.textContent = 'Unavailable';
+        resultCopy.textContent = error.message + ' Start the API with `python main.py`.';
+        resultCopy.classList.add('error');
+      }
+    });
+  </script>
+</body>
+</html>

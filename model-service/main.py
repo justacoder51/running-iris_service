@@ -3,8 +3,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "model.pkl")
 
-MODEL_PATH = "model.pkl"
 CLASS_NAMES = ["setosa", "versicolor", "virginica"]
 
 model = None
